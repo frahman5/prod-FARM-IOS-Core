@@ -281,7 +281,7 @@ if (!reachedCaptionScreen || !driver) {
 
 try {
     await addCaption(driver, tiktokCoordinates, manifest.caption);
-        if (manifest.destination === 'publish') {
+    if (manifest.destination === 'publish') {
         await tapCoordinate(driver, tiktokCoordinates.finish.x, tiktokCoordinates.finish.y, 'Post');
         console.log('TikTok post submitted');
         // The upload to TikTok continues in the background after this tap —

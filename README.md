@@ -42,6 +42,19 @@ npm run web
 
 TikTok support is enabled by default. Set `PHONE_FARM_PLUGINS` to comma-separated ESM package names to add more task plugins. Set `PHONE_FARM_AUTH_PLUGIN` to an ESM authentication provider before binding `WEB_HOST` outside loopback; startup deliberately fails otherwise.
 
+## Humanizer
+
+`src/tiktok/humanizer.ts` adds human-like randomness to the TikTok automation (enabled by default):
+
+- **Taps** — small Gaussian offset from the target point (≤6px), randomized hold (60–160ms instead of a fixed 100ms), and a short 50ms travel instead of an instant jump.
+- **Pauses** — every fixed `driver.pause()` is jittered around its original value (floor 70%, cap 130%).
+- **Swipes** — doomscroll swipes follow a quadratic Bezier trajectory with start/end jitter, a randomized control point, and eased per-segment timing (400–550ms total).
+- **Caption typing** — the caption is sent one key at a time with 40–120ms per-key delays and occasional 300–800ms pauses.
+
+Defaults live in `defaultConfig()` in `src/tiktok/humanizer.ts`; see [docs/humanizer.md](docs/humanizer.md) for the full list. Set `HUMANIZER=off` to restore the original fixed coordinates, timings, straight swipes, and single-request caption typing exactly.
+
+Step order, retry logic, and the 60s post-upload wait are unchanged (the post-upload wait is never shorter than 60s).
+
 ## Plugin contract
 
 `src/plugin.ts` defines the stable interfaces. A plugin can provide versioned tasks, registration checks, device-page panels, namespaced HTTP routes, and declared WDA extensions. Task execution receives the exact device, that plugin's own per-device data, resolved assets, a temporary workspace, cancellation, durable logging, safe device primitives, and an observed subprocess runner.
