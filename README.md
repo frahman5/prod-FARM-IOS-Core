@@ -14,6 +14,7 @@ It runs locally as-is; authentication is optional on a loopback bind. Harden it 
 - [docs/architecture.md](docs/architecture.md) — the four processes, data stores, task model, source map
 - [docs/plugins.md](docs/plugins.md) — write a plugin: tasks, execution context, versioning, panels, routes
 - [docs/coordinates.md](docs/coordinates.md) — tap-layout profiles and how to add one
+- [docs/humanizer.md](docs/humanizer.md) — humanizer: random delays, jittered taps, curved swipes, typing
 - [PLUGIN_DEVELOPMENT.md](PLUGIN_DEVELOPMENT.md) — plugin trust and compatibility rules
 - [SECURITY.md](SECURITY.md) — before exposing the dashboard beyond loopback
 

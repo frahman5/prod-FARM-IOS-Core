@@ -4,21 +4,44 @@ import type { Browser } from 'webdriverio';
 
 import type { WdaRemoteControl } from '@git-agni/phone-farm-core';
 import { findHandleMatch, pointFromWord, recognizeWords, type OcrWord } from './ocr.js';
+import { isEnabled, jitterTapPoint, pressDuration, humanDelay } from './humanizer.js';
 
 export async function tapCoordinate(driver: Browser, x: number, y: number, label: string): Promise<void> {
-    await driver.performActions([{
-        type: 'pointer',
-        id: 'finger',
-        parameters: { pointerType: 'touch' },
-        actions: [
-            { type: 'pointerMove', duration: 0, x, y },
-            { type: 'pointerDown', button: 0 },
-            { type: 'pause', duration: 100 },
-            { type: 'pointerUp', button: 0 },
-        ],
-    }]);
-    await driver.releaseActions();
-    console.log(`Tapped ${label} at (${x}, ${y})`);
+    const SCREEN_WIDTH = 10000;
+    const SCREEN_HEIGHT = 10000;
+    
+    if (isEnabled()) {
+        const jittered = jitterTapPoint(x, y, SCREEN_WIDTH, SCREEN_HEIGHT);
+        const duration = pressDuration();
+        
+        await driver.performActions([{
+            type: 'pointer',
+            id: 'finger',
+            parameters: { pointerType: 'touch' },
+            actions: [
+                { type: 'pointerMove', duration: 50, x: jittered.x, y: jittered.y },
+                { type: 'pointerDown', button: 0 },
+                { type: 'pause', duration },
+                { type: 'pointerUp', button: 0 },
+            ],
+        }]);
+        await driver.releaseActions();
+        console.log(`Tapped ${label} at (${jittered.x}, ${jittered.y}) with ${duration}ms hold`);
+    } else {
+        await driver.performActions([{
+            type: 'pointer',
+            id: 'finger',
+            parameters: { pointerType: 'touch' },
+            actions: [
+                { type: 'pointerMove', duration: 0, x, y },
+                { type: 'pointerDown', button: 0 },
+                { type: 'pause', duration: 100 },
+                { type: 'pointerUp', button: 0 },
+            ],
+        }]);
+        await driver.releaseActions();
+        console.log(`Tapped ${label} at (${x}, ${y})`);
+    }
 }
 
 export interface AccountSwitchCoords {
@@ -52,7 +75,7 @@ export async function switchTikTokAccount(
     // (seen live — different text each time, e.g. "What's good?", a
     // "Whisper" feature prompt), and it needs time to appear and, in some
     // cases, auto-dismiss before it stops intercepting taps in that area.
-    await driver.pause(2000);
+    await driver.pause(isEnabled() ? humanDelay(2000) : 2000);
 
     const { scale } = await remote.getScreenInfo(udid);
     const profileWords = await recognizeWords(await remote.getScreenshot(udid));
@@ -67,7 +90,7 @@ export async function switchTikTokAccount(
     let opened = false;
     for (let attempt = 1; attempt <= MAX_SWITCHER_OPEN_ATTEMPTS && !opened; attempt += 1) {
         await tapCoordinate(driver, coords.switcherTriggerX, coords.switcherTriggerY, `Account switcher (attempt ${attempt})`);
-        await driver.pause(1500);
+        await driver.pause(isEnabled() ? humanDelay(1500) : 1500);
         switcherWords = await recognizeWords(await remote.getScreenshot(udid));
         opened = switcherIsOpen(switcherWords);
     }
@@ -84,10 +107,10 @@ export async function switchTikTokAccount(
     const targetPoint = pointFromWord(targetMatch, scale);
     await tapCoordinate(driver, targetPoint.x, targetPoint.y, `Account row for ${targetHandle}`);
     // TikTok fully reloads app state after switching accounts.
-    await driver.pause(4000);
+    await driver.pause(isEnabled() ? humanDelay(4000) : 4000);
 
     await tapCoordinate(driver, coords.profileTabX, coords.profileTabY, 'Profile tab (verify)');
-    await driver.pause(1000);
+    await driver.pause(isEnabled() ? humanDelay(1000) : 1000);
 
     const verifyWords = await recognizeWords(await remote.getScreenshot(udid));
     if (!findHandleMatch(verifyWords, targetHandle)) {

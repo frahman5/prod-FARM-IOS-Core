@@ -9,6 +9,7 @@ import { coordinateProfile, registeredAccounts } from './runtime-settings.js';
 import { switchTikTokAccount, tapCoordinate } from './actions.js';
 import { recentPickerTargets } from './post-layout.js';
 import { isRedCheckboxChecked } from './pixel.js';
+import { isEnabled, humanDelay, typingPlan, getConfig } from './humanizer.js';
 
 function positiveInteger(name: string, fallback: number): number {
     const raw = process.env[name] ?? String(fallback);
@@ -68,13 +69,13 @@ async function openComposer(
     if (musicUrl) {
         console.log(`Opening music URL: ${musicUrl}`);
         await driver.execute('mobile: deepLink', { url: musicUrl });
-        await driver.pause(4000);
+        await driver.pause(isEnabled() ? humanDelay(4000) : 4000);
         await clickOne(driver, 'Use this sound', [
             '~Use this sound', '~Use sound', '-ios predicate string:(label CONTAINS[c] "Use this sound") OR (name CONTAINS[c] "Use this sound")',
         ]);
     } else {
         await driver.activateApp(process.env.TIKTOK_BUNDLE_ID ?? 'com.zhiliaoapp.musically');
-        await driver.pause(2500);
+        await driver.pause(isEnabled() ? humanDelay(2500) : 2500);
         // TikTok's live feed can make accessibility queries hang. The center
         // bottom navigation button is stable on the configured device layout.
         await tapCoordinate(
@@ -84,9 +85,9 @@ async function openComposer(
             'Create',
         );
     }
-    await driver.pause(2500);
+    await driver.pause(isEnabled() ? humanDelay(2500) : 2500);
     await tapCoordinate(driver, coordinates.upload.x, coordinates.upload.y, 'Upload');
-    await driver.pause(2500);
+    await driver.pause(isEnabled() ? humanDelay(2500) : 2500);
 }
 
 const CHECKBOX_RETRY_ATTEMPTS = 3;
@@ -113,7 +114,7 @@ async function ensureCheckboxState(
             return;
         }
         await tapCoordinate(driver, point.x, point.y, `${label} (attempt ${attempt})`);
-        await driver.pause(1000);
+        await driver.pause(isEnabled() ? humanDelay(1000) : 1000);
     }
     throw new Error(`Could not get "${label}" into the ${desired ? 'on' : 'off'} state after ${CHECKBOX_RETRY_ATTEMPTS} attempts`);
 }
@@ -137,7 +138,7 @@ async function chooseRecentMedia(
         });
         for (const [selection, { x, y }] of targets.entries()) {
             await tapCoordinate(driver, x, y, `media ${selection + 1}/${count}`);
-            await driver.pause(600);
+            await driver.pause(isEnabled() ? humanDelay(600) : 600);
         }
         await ensureCheckboxState(driver, remote, udid, {
             x: coordinates.useLayout.x,
@@ -147,26 +148,47 @@ async function chooseRecentMedia(
         const column = latestIndex % 3;
         const x = coordinates.picker.cellX + (column * coordinates.picker.cellStep);
         await tapCoordinate(driver, x, coordinates.picker.cellY, 'media 1/1');
-        await driver.pause(1000);
+        await driver.pause(isEnabled() ? humanDelay(1000) : 1000);
     }
     await tapCoordinate(driver, coordinates.pickerNext.x, coordinates.pickerNext.y, 'picker Next');
-    await driver.pause(3000);
+    await driver.pause(isEnabled() ? humanDelay(3000) : 3000);
     await tapCoordinate(driver, coordinates.editorNext.x, coordinates.editorNext.y, 'editor Next');
-    await driver.pause(3000);
+    await driver.pause(isEnabled() ? humanDelay(3000) : 3000);
 }
 
 async function addCaption(driver: Browser, coordinates: TikTokCoordinates['tiktok'], caption?: string): Promise<void> {
     if (!caption) return;
     await tapCoordinate(driver, coordinates.caption.x, coordinates.caption.y, 'caption');
-    const appiumHost = process.env.APPIUM_HOST ?? '127.0.0.1';
-    const appiumPort = positiveInteger('APPIUM_PORT', 4725);
-    const response = await fetch(`http://${appiumHost}:${appiumPort}/session/${driver.sessionId}/keys`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ value: [caption] }),
-    });
-    if (!response.ok) throw new Error(`Appium could not type the caption: ${await response.text()}`);
-    await driver.pause(500);
+    
+    if (isEnabled()) {
+        const steps = typingPlan(caption);
+        const appiumHost = process.env.APPIUM_HOST ?? '127.0.0.1';
+        const appiumPort = positiveInteger('APPIUM_PORT', 4725);
+        for (let i = 0; i < steps.length; i++) {
+            const step = steps[i];
+            if (step.delayMs > 0 && i > 0) {
+                await driver.pause(step.delayMs);
+            }
+            const response = await fetch(`http://${appiumHost}:${appiumPort}/session/${driver.sessionId}/keys`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ value: [step.char] }),
+            });
+            if (!response.ok) throw new Error(`Appium could not type the caption: ${await response.text()}`);
+        }
+        await driver.pause(humanDelay(500));
+    } else {
+        const appiumHost = process.env.APPIUM_HOST ?? '127.0.0.1';
+        const appiumPort = positiveInteger('APPIUM_PORT', 4725);
+        const response = await fetch(`http://${appiumHost}:${appiumPort}/session/${driver.sessionId}/keys`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ value: [caption] }),
+        });
+        if (!response.ok) throw new Error(`Appium could not type the caption: ${await response.text()}`);
+        await driver.pause(500);
+    }
+    
     // On this TikTok screen, Back dismisses the keyboard without leaving the form.
     await tapCoordinate(driver, coordinates.keyboardBack.x, coordinates.keyboardBack.y, 'keyboard Back');
     console.log('Caption added');
@@ -235,7 +257,7 @@ for (let attempt = 1; attempt <= REACH_CAPTION_SCREEN_ATTEMPTS && !reachedCaptio
         await driver.updateSettings({ defaultActiveApplication: bundleId });
         if (switchAccountName) {
             console.log(`Switching to TikTok account "${switchAccountName}"`);
-            await driver.pause(2000);
+            await driver.pause(isEnabled() ? humanDelay(2000) : 2000);
             await switchTikTokAccount(driver, deviceRemote, manifest.device.udid, switchAccountName, accountSwitchCoords);
         }
         await openComposer(driver, tiktokCoordinates, manifest.musicUrl);
@@ -259,16 +281,16 @@ if (!reachedCaptionScreen || !driver) {
 
 try {
     await addCaption(driver, tiktokCoordinates, manifest.caption);
-    if (manifest.destination === 'publish') {
+        if (manifest.destination === 'publish') {
         await tapCoordinate(driver, tiktokCoordinates.finish.x, tiktokCoordinates.finish.y, 'Post');
         console.log('TikTok post submitted');
         // The upload to TikTok continues in the background after this tap —
         // tearing down the session too soon can interrupt it.
-        await driver.pause(60_000);
+        await driver.pause(isEnabled() ? Math.max(60_000, humanDelay(60_000)) : 60_000);
     } else {
         await tapCoordinate(driver, tiktokCoordinates.draft.x, tiktokCoordinates.draft.y, 'Drafts');
         console.log('TikTok draft saved');
-        await driver.pause(2500);
+        await driver.pause(isEnabled() ? humanDelay(2500) : 2500);
     }
 } finally {
     await driver.deleteSession();

@@ -14,6 +14,7 @@ import {
     isPersonality,
     pickWatchDurationMs,
 } from './doomscroll-profile.js';
+import { isEnabled, humanDelay, swipeSequence, getConfig } from './humanizer.js';
 
 function positiveInteger(name: string, fallback: number): number {
     const rawValue = process.env[name] ?? String(fallback);
@@ -248,19 +249,40 @@ try {
 
         // Coordinate actions bypass XCTest's expensive application-element
         // lookup, which can hang on TikTok's continuously updating feed.
-        await driver.performActions([{
-            type: 'pointer',
-            id: 'finger',
-            parameters: { pointerType: 'touch' },
-            actions: [
-                { type: 'pointerMove', duration: 0, x: swipeX, y: swipeStartY },
-                { type: 'pointerDown', button: 0 },
-                { type: 'pause', duration: 100 },
-                { type: 'pointerMove', duration: swipeDurationMs, x: swipeX, y: swipeEndY },
-                { type: 'pointerUp', button: 0 },
-            ],
-        }]);
-        await driver.releaseActions();
+        if (isEnabled()) {
+            const seq = swipeSequence(swipeX, swipeStartY, swipeX, swipeEndY, 10000, 10000);
+            let cumulativeDuration = 0;
+            await driver.performActions([{
+                type: 'pointer',
+                id: 'finger',
+                parameters: { pointerType: 'touch' },
+                actions: [
+                    { type: 'pointerMove', duration: 0, x: seq.path[0].x, y: seq.path[0].y },
+                    { type: 'pointerDown', button: 0 },
+                    { type: 'pause', duration: 100 },
+                    ...seq.path.slice(1).flatMap((point, i) => {
+                        cumulativeDuration += seq.durations[i];
+                        return { type: 'pointerMove', duration: seq.durations[i], x: point.x, y: point.y };
+                    }),
+                    { type: 'pointerUp', button: 0 },
+                ],
+            }]);
+            await driver.releaseActions();
+        } else {
+            await driver.performActions([{
+                type: 'pointer',
+                id: 'finger',
+                parameters: { pointerType: 'touch' },
+                actions: [
+                    { type: 'pointerMove', duration: 0, x: swipeX, y: swipeStartY },
+                    { type: 'pointerDown', button: 0 },
+                    { type: 'pause', duration: 100 },
+                    { type: 'pointerMove', duration: swipeDurationMs, x: swipeX, y: swipeEndY },
+                    { type: 'pointerUp', button: 0 },
+                ],
+            }]);
+            await driver.releaseActions();
+        }
         swipes += 1;
     }
 
