@@ -359,7 +359,7 @@ export function swipeSequence(
         remaining -= Math.round(share);
     }
     
-    if (durations.length > 0 && remaining > 0) {
+    if (durations.length > 0 && remaining !== 0) {
         durations[durations.length - 1] += remaining;
     }
 
