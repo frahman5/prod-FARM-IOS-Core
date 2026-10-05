@@ -113,7 +113,7 @@ async function ensureCheckboxState(
             console.log(`"${label}" confirmed ${desired ? 'on' : 'off'}`);
             return;
         }
-        await tapCoordinate(driver, point.x, point.y, `${label} (attempt ${attempt})`);
+        await tapCoordinate(driver, point.x, point.y, `${label} (attempt ${attempt})`, { jitter: false });
         await driver.pause(isEnabled() ? humanDelay(1000) : 1000);
     }
     throw new Error(`Could not get "${label}" into the ${desired ? 'on' : 'off'} state after ${CHECKBOX_RETRY_ATTEMPTS} attempts`);
@@ -187,7 +187,7 @@ async function addCaption(driver: Browser, coordinates: TikTokCoordinates['tikto
     }
     
     // On this TikTok screen, Back dismisses the keyboard without leaving the form.
-    await tapCoordinate(driver, coordinates.keyboardBack.x, coordinates.keyboardBack.y, 'keyboard Back');
+    await tapCoordinate(driver, coordinates.keyboardBack.x, coordinates.keyboardBack.y, 'keyboard Back', { jitter: false });
     console.log('Caption added');
 }
 

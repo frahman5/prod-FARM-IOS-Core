@@ -248,45 +248,59 @@ export interface TypingStep {
     delayMs: number;
 }
 
+// Walk grapheme clusters so surrogate pairs, flags, and skin-tone sequences
+// stay intact across /keys chunks. text[i] would split UTF-16 code units.
+function graphemeClusters(text: string): string[] {
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    return Array.from(segmenter.segment(text), ({ segment }) => segment);
+}
+
+function typingKeyDelay(config: HumanizerConfig, random: () => number): number {
+    return Math.round(
+        config.typing.keyDelayMinMs + random() * (config.typing.keyDelayMaxMs - config.typing.keyDelayMinMs)
+    );
+}
+
 export function typingPlan(text: string, random: () => number = Math.random): TypingStep[] {
     const config = getConfig();
     if (!config.enabled || !text) return [];
 
+    const units = graphemeClusters(text);
     const steps: TypingStep[] = [];
     let currentChunk = '';
-    let targetChunkSize = Math.floor(random() * 6) + 1; // 1-6, set once per chunk
+    let currentUnits = 0;
+    let targetChunkSize = Math.floor(random() * 6) + 1; // 1-6 graphemes, set once per chunk
     
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
+    for (let i = 0; i < units.length; i++) {
+        const char = units[i];
         const isSpace = char.trim() === '';
-        const isLastChar = i === text.length - 1;
+        const isLastChar = i === units.length - 1;
         
         // Spaces are always submitted as their own chunk
         if (isSpace) {
             if (currentChunk.length > 0) {
                 // Submit the current non-space chunk first
-                const delay = Math.round(
-                    config.typing.keyDelayMinMs + random() * (config.typing.keyDelayMaxMs - config.typing.keyDelayMinMs)
-                );
                 steps.push({ 
                     chunk: currentChunk, 
-                    delayMs: steps.length === 0 ? 0 : delay 
+                    delayMs: steps.length === 0 ? 0 : typingKeyDelay(config, random),
                 });
                 currentChunk = '';
+                currentUnits = 0;
             }
             // Add the space as its own chunk
             steps.push({ 
                 chunk: char, 
-                delayMs: steps.length === 0 ? 0 : Math.round(config.typing.keyDelayMinMs + random() * (config.typing.keyDelayMaxMs - config.typing.keyDelayMinMs))
+                delayMs: steps.length === 0 ? 0 : typingKeyDelay(config, random),
             });
             targetChunkSize = Math.floor(random() * 6) + 1;
             continue;
         }
         
         currentChunk += char;
+        currentUnits += 1;
         
-        // Submit when last char or when chunk reaches random target size
-        if (isLastChar || currentChunk.length >= targetChunkSize) {
+        // Submit when last grapheme or when chunk reaches random target size
+        if (isLastChar || currentUnits >= targetChunkSize) {
             // Random delay with occasional longer "thinking" pause
             let delay: number;
             if (random() < config.typing.pauseChance) {
@@ -294,9 +308,7 @@ export function typingPlan(text: string, random: () => number = Math.random): Ty
                     config.typing.pauseMinMs + random() * (config.typing.pauseMaxMs - config.typing.pauseMinMs)
                 );
             } else {
-                delay = Math.round(
-                    config.typing.keyDelayMinMs + random() * (config.typing.keyDelayMaxMs - config.typing.keyDelayMinMs)
-                );
+                delay = typingKeyDelay(config, random);
             }
             
             steps.push({ 
@@ -305,6 +317,7 @@ export function typingPlan(text: string, random: () => number = Math.random): Ty
             });
             
             currentChunk = '';
+            currentUnits = 0;
             targetChunkSize = Math.floor(random() * 6) + 1;
         }
     }

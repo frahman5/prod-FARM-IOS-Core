@@ -272,6 +272,40 @@ test('typingPlan breaks at spaces (spaces are their own chunks)', () => {
     resetConfig();
 });
 
+test('typingPlan keeps emoji and grapheme clusters intact', () => {
+    resetConfig();
+    delete process.env.HUMANIZER;
+    getConfig().enabled = true;
+
+    // Surrogate pairs (🔥), flag (🇺🇸), and skin-tone modifier (👍🏽) must not
+    // be split across /keys chunks the way text[i] UTF-16 iteration would.
+    const text = 'love this 🔥🔥 #fyp 🇺🇸👍🏽';
+    const steps = typingPlan(text, seededRandom(42));
+
+    assert.equal(steps.map((step) => step.chunk).join(''), text, 'Chunks should reconstruct the original caption');
+
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    for (const step of steps) {
+        for (const char of step.chunk) {
+            const codePoint = char.codePointAt(0)!;
+            assert.ok(
+                codePoint < 0xD800 || codePoint > 0xDFFF,
+                `Chunk ${JSON.stringify(step.chunk)} contains a lone UTF-16 surrogate`,
+            );
+        }
+        const clusters = Array.from(segmenter.segment(step.chunk), ({ segment }) => segment);
+        assert.equal(clusters.join(''), step.chunk, `Chunk ${JSON.stringify(step.chunk)} should be whole graphemes`);
+    }
+
+    const joined = steps.map((step) => step.chunk).join('');
+    assert.ok(joined.includes('🔥🔥'), 'Fire emoji should survive intact');
+    assert.ok(steps.some((step) => step.chunk.includes('🔥')), 'Fire emoji should live in a single chunk');
+    assert.ok(steps.some((step) => step.chunk.includes('🇺🇸')), 'Flag emoji should live in a single chunk');
+    assert.ok(steps.some((step) => step.chunk.includes('👍🏽')), 'Skin-tone emoji should live in a single chunk');
+
+    resetConfig();
+});
+
 test('typingPlan respects delay ranges', () => {
     resetConfig();
     delete process.env.HUMANIZER;
@@ -379,6 +413,8 @@ test('swipeSequence generates path and durations', () => {
     assert.ok(seq.totalDurationMs >= 400 && seq.totalDurationMs <= 550, 'Total duration should be within range');
     
     const sumDurations = seq.durations.reduce((a, b) => a + b, 0);
+    assert.equal(sumDurations, seq.totalDurationMs, 'Segment durations should sum to totalDurationMs');
+    assert.equal(seq.durations.length, seq.path.length - 1, 'One duration per path segment');
     
     resetConfig();
 });

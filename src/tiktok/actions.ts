@@ -14,11 +14,26 @@ export function setScreenSize(size: { width: number; height: number } | undefine
     cachedScreenSize = size;
 }
 
-export async function tapCoordinate(driver: Browser, x: number, y: number, label: string): Promise<void> {
+export interface TapCoordinateOptions {
+    // When false, skip the Gaussian offset and tap the exact point.
+    // Use for registration readiness checks and small targets (checkboxes, keyboard Back).
+    jitter?: boolean;
+}
+
+export async function tapCoordinate(
+    driver: Browser,
+    x: number,
+    y: number,
+    label: string,
+    options: TapCoordinateOptions = {},
+): Promise<void> {
     if (isEnabled()) {
-        const jittered = cachedScreenSize
-            ? jitterTapPoint(x, y, cachedScreenSize.width, cachedScreenSize.height)
-            : jitterTapPoint(x, y, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
+        const applyJitter = options.jitter !== false;
+        const point = applyJitter
+            ? (cachedScreenSize
+                ? jitterTapPoint(x, y, cachedScreenSize.width, cachedScreenSize.height)
+                : jitterTapPoint(x, y, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY))
+            : { x: Math.round(x), y: Math.round(y) };
         const duration = pressDuration();
         
         await driver.performActions([{
@@ -26,14 +41,14 @@ export async function tapCoordinate(driver: Browser, x: number, y: number, label
             id: 'finger',
             parameters: { pointerType: 'touch' },
             actions: [
-                { type: 'pointerMove', duration: 50, x: jittered.x, y: jittered.y },
+                { type: 'pointerMove', duration: 50, x: point.x, y: point.y },
                 { type: 'pointerDown', button: 0 },
                 { type: 'pause', duration },
                 { type: 'pointerUp', button: 0 },
             ],
         }]);
         await driver.releaseActions();
-        console.log(`Tapped ${label} at (${jittered.x}, ${jittered.y}) with ${duration}ms hold`);
+        console.log(`Tapped ${label} at (${point.x}, ${point.y}) with ${duration}ms hold`);
     } else {
         await driver.performActions([{
             type: 'pointer',
