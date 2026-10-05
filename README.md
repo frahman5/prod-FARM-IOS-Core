@@ -49,7 +49,7 @@ TikTok support is enabled by default. Set `PHONE_FARM_PLUGINS` to comma-separate
 - **Taps** — small Gaussian offset from the target point (≤6px), randomized hold (60–160ms instead of a fixed 100ms), and a short 50ms travel instead of an instant jump.
 - **Pauses** — every fixed `driver.pause()` is jittered around its original value (floor 70%, cap 130%).
 - **Swipes** — doomscroll swipes follow a quadratic Bezier trajectory with start/end jitter, a randomized control point, and eased per-segment timing (400–550ms total).
-- **Caption typing** — the caption is sent one key at a time with 40–120ms per-key delays and occasional 300–800ms pauses.
+- **Caption typing** — the caption is sent in small random chunks (1–6 characters, spaces sent separately) with 40–120ms delays between chunks and occasional 300–800ms pauses.
 
 Defaults live in `defaultConfig()` in `src/tiktok/humanizer.ts`; see [docs/humanizer.md](docs/humanizer.md) for the full list. Set `HUMANIZER=off` to restore the original fixed coordinates, timings, straight swipes, and single-request caption typing exactly.
 

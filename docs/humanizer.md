@@ -4,12 +4,12 @@ The humanizer makes automated phone-farm interactions look human by introducing 
 
 ## What's randomized
 
-- **Tap coordinates**: 6px Gaussian offset from target, clamped to screen bounds
+- **Tap coordinates**: 6px Gaussian offset from target, clamped to the device's logical screen size (from its coordinate profile; unclamped if unknown)
 - **Press duration**: 60–160ms random hold instead of fixed 100ms
 - **Tap travel**: 50ms movement instead of instant
 - **Jittered delays**: Log-normal spread around base values (70–130% of original, never below 70% floor for UI-transition waits)
 - **Swipe trajectories**: Quadratic Bezier curves with random control-point deviation, 8-step eased timing, 4–6px start/end jitter
-- **Typing patterns**: Per-character delays (40–120ms) with occasional longer pauses (300–800ms)
+- **Typing patterns**: Random 1–6 character chunks (spaces sent separately) with 40–120ms delays between chunks and occasional longer pauses (300–800ms)
 
 ## Configuration
 
