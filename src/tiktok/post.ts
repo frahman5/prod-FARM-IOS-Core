@@ -6,10 +6,10 @@ import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } fro
 import type { PostManifest } from './post-manifest.js';
 import { type TikTokCoordinates } from './coordinates.js';
 import { coordinateProfile, registeredAccounts } from './runtime-settings.js';
-import { switchTikTokAccount, tapCoordinate } from './actions.js';
+import { switchTikTokAccount, tapCoordinate, setScreenSize } from './actions.js';
 import { recentPickerTargets } from './post-layout.js';
 import { isRedCheckboxChecked } from './pixel.js';
-import { isEnabled, humanDelay, typingPlan, getConfig } from './humanizer.js';
+import { isEnabled, humanDelay, typingPlan } from './humanizer.js';
 
 function positiveInteger(name: string, fallback: number): number {
     const raw = process.env[name] ?? String(fallback);
@@ -156,36 +156,33 @@ async function chooseRecentMedia(
     await driver.pause(isEnabled() ? humanDelay(3000) : 3000);
 }
 
+async function sendKeys(driver: Browser, text: string): Promise<void> {
+    const appiumHost = process.env.APPIUM_HOST ?? '127.0.0.1';
+    const appiumPort = positiveInteger('APPIUM_PORT', 4725);
+    const response = await fetch(`http://${appiumHost}:${appiumPort}/session/${driver.sessionId}/keys`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: [text] }),
+    });
+    if (!response.ok) throw new Error(`Appium could not type the caption: ${await response.text()}`);
+}
+
 async function addCaption(driver: Browser, coordinates: TikTokCoordinates['tiktok'], caption?: string): Promise<void> {
     if (!caption) return;
     await tapCoordinate(driver, coordinates.caption.x, coordinates.caption.y, 'caption');
     
     if (isEnabled()) {
         const steps = typingPlan(caption);
-        const appiumHost = process.env.APPIUM_HOST ?? '127.0.0.1';
-        const appiumPort = positiveInteger('APPIUM_PORT', 4725);
         for (let i = 0; i < steps.length; i++) {
             const step = steps[i];
             if (step.delayMs > 0 && i > 0) {
                 await driver.pause(step.delayMs);
             }
-            const response = await fetch(`http://${appiumHost}:${appiumPort}/session/${driver.sessionId}/keys`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ value: [step.char] }),
-            });
-            if (!response.ok) throw new Error(`Appium could not type the caption: ${await response.text()}`);
+            await sendKeys(driver, step.chunk);
         }
         await driver.pause(humanDelay(500));
     } else {
-        const appiumHost = process.env.APPIUM_HOST ?? '127.0.0.1';
-        const appiumPort = positiveInteger('APPIUM_PORT', 4725);
-        const response = await fetch(`http://${appiumHost}:${appiumPort}/session/${driver.sessionId}/keys`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ value: [caption] }),
-        });
-        if (!response.ok) throw new Error(`Appium could not type the caption: ${await response.text()}`);
+        await sendKeys(driver, caption);
         await driver.pause(500);
     }
     
@@ -201,6 +198,7 @@ const manifest = JSON.parse(await readFile(path.resolve(manifestPath), 'utf8')) 
 const switchAccountName = manifest.account?.trim() || undefined;
 const registeredDevice = (await loadRegisteredDevices()).find((device) => device.udid === manifest.device.udid);
 const coordinates = resolveDeviceCoordinates(coordinateProfile(registeredDevice), registeredDevice?.coordinates);
+setScreenSize(coordinates.screenSize);
 const tiktokCoordinates = coordinates.tiktok;
 const accountSwitchCoords = {
     profileTabX: tiktokCoordinates.profileTab.x,

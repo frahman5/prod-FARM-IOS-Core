@@ -202,20 +202,166 @@ test('typingPlan returns empty array when disabled', () => {
     resetConfig();
 });
 
-test('typingPlan generates steps with delays when enabled', () => {
+test('typingPlan chunks text into random 1-6 char chunks with delays', () => {
     resetConfig();
     delete process.env.HUMANIZER;
     getConfig().enabled = true;
 
-    const steps = typingPlan('hello', seededRandom(42));
+    const text = 'hello world';
+    const steps = typingPlan(text, seededRandom(42));
     
-    assert.equal(steps.length, 5, 'Should have one step per character');
-    assert.equal(steps[0].char, 'h');
-    assert.equal(steps[0].delayMs, 0, 'First character has no delay');
+    // First step has no delay
+    assert.equal(steps[0].delayMs, 0, 'First chunk has no delay');
     
+    // All chunks should be 1-6 chars
+    for (const step of steps) {
+        assert.ok(step.chunk.length >= 1 && step.chunk.length <= 6, 
+            `Chunk "${step.chunk}" length ${step.chunk.length} should be 1-6`);
+    }
+    
+    // Concatenating all chunks should equal original text
+    const result = steps.map(s => s.chunk).join('');
+    assert.equal(result, text, 'Chunks should reconstruct original text');
+    
+    // A 60-char caption should produce fewer than 40 steps (avg chunk size > 1.5)
+    const longText = 'a'.repeat(60);
+    const longSteps = typingPlan(longText, seededRandom(42));
+    assert.ok(longSteps.length < 40, 
+        `60-char text produced ${longSteps.length} steps, expected < 40`);
+    
+    resetConfig();
+});
+
+test('typingPlan is deterministic with same seed', () => {
+    resetConfig();
+    delete process.env.HUMANIZER;
+    getConfig().enabled = true;
+
+    const text = 'hello world test';
+    const steps1 = typingPlan(text, seededRandom(12345));
+    const steps2 = typingPlan(text, seededRandom(12345));
+    
+    assert.equal(steps1.length, steps2.length);
+    for (let i = 0; i < steps1.length; i++) {
+        assert.equal(steps1[i].chunk, steps2[i].chunk, `Chunk ${i} should match`);
+        assert.equal(steps1[i].delayMs, steps2[i].delayMs, `Delay ${i} should match`);
+    }
+    
+    resetConfig();
+});
+
+test('typingPlan breaks at spaces (spaces are their own chunks)', () => {
+    resetConfig();
+    delete process.env.HUMANIZER;
+    getConfig().enabled = true;
+
+    const text = 'hi there you';
+    const steps = typingPlan(text, seededRandom(42));
+    
+    // Check that no NON-SPACE chunk contains a space
+    for (const step of steps) {
+        if (step.chunk !== ' ') {
+            assert.ok(!step.chunk.includes(' '), `Non-space chunk "${step.chunk}" should not contain space`);
+        }
+    }
+    
+    // Verify that spaces exist as their own chunks (expecting 2+ spaces)
+    const spaceChunks = steps.filter(s => s.chunk === ' ');
+    assert.ok(spaceChunks.length >= 2, `Expected at least 2 space chunks, got ${spaceChunks.length}`);
+    
+    resetConfig();
+});
+
+test('typingPlan respects delay ranges', () => {
+    resetConfig();
+    delete process.env.HUMANIZER;
+    getConfig().enabled = true;
+
+    const text = 'test text here';
+    const steps = typingPlan(text, seededRandom(42));
+    
+    // First step has delay 0
+    assert.equal(steps[0].delayMs, 0);
+    
+    // Other steps have delays (may include thinking pauses)
     for (let i = 1; i < steps.length; i++) {
-        assert.ok(steps[i].delayMs >= 40, `Delay ${steps[i].delayMs} should be >= 40ms`);
-        assert.ok(steps[i].delayMs <= 120, `Delay ${steps[i].delayMs} should be <= 120ms`);
+        const delay = steps[i].delayMs;
+        assert.ok(delay >= 40, `Delay ${delay} below minimum 40ms`);
+        assert.ok(delay <= 800, `Delay ${delay} above maximum 800ms (thinking pause)`);
+    }
+    
+    resetConfig();
+});
+
+test('jitterTapPoint clamps edge coordinates within bounds', () => {
+    resetConfig();
+    delete process.env.HUMANIZER;
+    getConfig().enabled = true;
+
+    const screenWidth = 375;
+    const screenHeight = 667;
+    
+    // Test edge case: point near corner with large maxOffset
+    let allWithinBounds = true;
+    for (let seed = 1; seed <= 20; seed++) {
+        const result = jitterTapPoint(374, 666, screenWidth, screenHeight, seededRandom(seed), 50);
+        if (result.x < 0 || result.x > screenWidth || result.y < 0 || result.y > screenHeight) {
+            allWithinBounds = false;
+            break;
+        }
+    }
+    
+    assert.ok(allWithinBounds, 'All jittered points should be within bounds');
+    
+    resetConfig();
+});
+
+test('jitterTapPoint with Infinity does not clamp (returns rounded jittered values)', () => {
+    resetConfig();
+    delete process.env.HUMANIZER;
+    getConfig().enabled = true;
+
+    // With Infinity bounds, jitter is applied but not clamped
+    const result = jitterTapPoint(100, 200, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY, seededRandom(42));
+    
+    // Result should be finite and rounded
+    assert.ok(Number.isFinite(result.x), 'x should be finite');
+    assert.ok(Number.isFinite(result.y), 'y should be finite');
+    assert.ok(Number.isInteger(result.x), 'x should be integer');
+    assert.ok(Number.isInteger(result.y), 'y should be integer');
+    
+    resetConfig();
+});
+
+test('bezierSwipePath all points within screen bounds', () => {
+    resetConfig();
+    delete process.env.HUMANIZER;
+    getConfig().enabled = true;
+
+    const path = bezierSwipePath(187, 600, 187, 100, 375, 667, seededRandom(42));
+    
+    for (const point of path) {
+        assert.ok(point.x >= 0 && point.x <= 375, 
+            `Point x ${point.x} outside [0, 375]`);
+        assert.ok(point.y >= 0 && point.y <= 667, 
+            `Point y ${point.y} outside [0, 667]`);
+    }
+    
+    resetConfig();
+});
+
+test('swipeSequence all points within screen bounds', () => {
+    resetConfig();
+    delete process.env.HUMANIZER;
+    getConfig().enabled = true;
+
+    const seq = swipeSequence(187, 600, 187, 100, 375, 667, seededRandom(42));
+    
+    for (const point of seq.path) {
+        assert.ok(point.x >= 0 && point.x <= 375, 
+            `Point x ${point.x} outside [0, 375]`);
+        assert.ok(point.y >= 0 && point.y <= 667, 
+            `Point y ${point.y} outside [0, 667]`);
     }
     
     resetConfig();

@@ -6,12 +6,19 @@ import type { WdaRemoteControl } from '@git-agni/phone-farm-core';
 import { findHandleMatch, pointFromWord, recognizeWords, type OcrWord } from './ocr.js';
 import { isEnabled, jitterTapPoint, pressDuration, humanDelay } from './humanizer.js';
 
+// Module-level cached screen size for clamping jittered taps.
+// Set once per session after resolving device coordinates.
+let cachedScreenSize: { width: number; height: number } | undefined;
+
+export function setScreenSize(size: { width: number; height: number } | undefined): void {
+    cachedScreenSize = size;
+}
+
 export async function tapCoordinate(driver: Browser, x: number, y: number, label: string): Promise<void> {
-    const SCREEN_WIDTH = 10000;
-    const SCREEN_HEIGHT = 10000;
-    
     if (isEnabled()) {
-        const jittered = jitterTapPoint(x, y, SCREEN_WIDTH, SCREEN_HEIGHT);
+        const jittered = cachedScreenSize
+            ? jitterTapPoint(x, y, cachedScreenSize.width, cachedScreenSize.height)
+            : jitterTapPoint(x, y, Number.POSITIVE_INFINITY, Number.POSITIVE_INFINITY);
         const duration = pressDuration();
         
         await driver.performActions([{

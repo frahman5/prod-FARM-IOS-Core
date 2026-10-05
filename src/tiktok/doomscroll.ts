@@ -2,7 +2,7 @@ import { remote, type Browser } from 'webdriverio';
 
 import { loadRegisteredDevices, resolveDeviceCoordinates, WdaRemoteControl } from '@git-agni/phone-farm-core';
 import { coordinateProfile, registeredAccounts } from './runtime-settings.js';
-import { switchTikTokAccount, tapCoordinate } from './actions.js';
+import { switchTikTokAccount, tapCoordinate, setScreenSize } from './actions.js';
 import { detectEngagementControls } from './engagement-controls.js';
 import {
     PROFILES,
@@ -14,7 +14,7 @@ import {
     isPersonality,
     pickWatchDurationMs,
 } from './doomscroll-profile.js';
-import { isEnabled, humanDelay, swipeSequence, getConfig } from './humanizer.js';
+import { isEnabled, humanDelay, swipeSequence } from './humanizer.js';
 
 function positiveInteger(name: string, fallback: number): number {
     const rawValue = process.env[name] ?? String(fallback);
@@ -59,6 +59,7 @@ const saveEnabled = booleanEnv('DOOMSCROLL_SAVE_ENABLED', true);
 const switchAccountName = process.env.TIKTOK_SWITCH_ACCOUNT?.trim() || undefined;
 const registeredDevice = (await loadRegisteredDevices()).find((device) => device.udid === udid);
 const coordinates = resolveDeviceCoordinates(coordinateProfile(registeredDevice), registeredDevice?.coordinates);
+setScreenSize(coordinates.screenSize);
 const tiktokCoordinates = coordinates.tiktok;
 const accountSwitchCoords = {
     profileTabX: tiktokCoordinates.profileTab.x,
@@ -250,8 +251,7 @@ try {
         // Coordinate actions bypass XCTest's expensive application-element
         // lookup, which can hang on TikTok's continuously updating feed.
         if (isEnabled()) {
-            const seq = swipeSequence(swipeX, swipeStartY, swipeX, swipeEndY, 10000, 10000);
-            let cumulativeDuration = 0;
+            const seq = swipeSequence(swipeX, swipeStartY, swipeX, swipeEndY, coordinates.screenSize.width, coordinates.screenSize.height);
             await driver.performActions([{
                 type: 'pointer',
                 id: 'finger',
@@ -261,7 +261,6 @@ try {
                     { type: 'pointerDown', button: 0 },
                     { type: 'pause', duration: 100 },
                     ...seq.path.slice(1).flatMap((point, i) => {
-                        cumulativeDuration += seq.durations[i];
                         return { type: 'pointerMove', duration: seq.durations[i], x: point.x, y: point.y };
                     }),
                     { type: 'pointerUp', button: 0 },

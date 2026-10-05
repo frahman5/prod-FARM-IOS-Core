@@ -11,7 +11,6 @@
 export interface HumanizerConfig {
     enabled: boolean;
     delays: {
-        minMultiplier: number;
         maxMultiplier: number;
         jitterStdDev: number;
         minFloorMultiplier: number;
@@ -42,7 +41,6 @@ function defaultConfig(): HumanizerConfig {
     return {
         enabled: true,
         delays: {
-            minMultiplier: 0.9,
             maxMultiplier: 1.3,
             jitterStdDev: 0.15,
             minFloorMultiplier: 0.7,
@@ -124,8 +122,8 @@ function clamp(value: number, min: number, max: number): number {
 
 function clampToScreen(x: number, y: number, screenWidth: number, screenHeight: number): { x: number; y: number } {
     return {
-        x: clamp(Math.round(x), 0, screenWidth),
-        y: clamp(Math.round(y), 0, screenHeight),
+        x: screenWidth === Number.POSITIVE_INFINITY ? Math.round(x) : clamp(Math.round(x), 0, screenWidth),
+        y: screenHeight === Number.POSITIVE_INFINITY ? Math.round(y) : clamp(Math.round(y), 0, screenHeight),
     };
 }
 
@@ -246,7 +244,7 @@ export function swipeDuration(random: () => number = Math.random): number {
 }
 
 export interface TypingStep {
-    char: string;
+    chunk: string;
     delayMs: number;
 }
 
@@ -255,21 +253,60 @@ export function typingPlan(text: string, random: () => number = Math.random): Ty
     if (!config.enabled || !text) return [];
 
     const steps: TypingStep[] = [];
+    let currentChunk = '';
+    let targetChunkSize = Math.floor(random() * 6) + 1; // 1-6, set once per chunk
+    
     for (let i = 0; i < text.length; i++) {
         const char = text[i];
+        const isSpace = char.trim() === '';
+        const isLastChar = i === text.length - 1;
         
-        let delay: number;
-        if (random() < config.typing.pauseChance) {
-            delay = Math.round(
-                config.typing.pauseMinMs + random() * (config.typing.pauseMaxMs - config.typing.pauseMinMs)
-            );
-        } else {
-            delay = Math.round(
-                config.typing.keyDelayMinMs + random() * (config.typing.keyDelayMaxMs - config.typing.keyDelayMinMs)
-            );
+        // Spaces are always submitted as their own chunk
+        if (isSpace) {
+            if (currentChunk.length > 0) {
+                // Submit the current non-space chunk first
+                const delay = Math.round(
+                    config.typing.keyDelayMinMs + random() * (config.typing.keyDelayMaxMs - config.typing.keyDelayMinMs)
+                );
+                steps.push({ 
+                    chunk: currentChunk, 
+                    delayMs: steps.length === 0 ? 0 : delay 
+                });
+                currentChunk = '';
+            }
+            // Add the space as its own chunk
+            steps.push({ 
+                chunk: char, 
+                delayMs: steps.length === 0 ? 0 : Math.round(config.typing.keyDelayMinMs + random() * (config.typing.keyDelayMaxMs - config.typing.keyDelayMinMs))
+            });
+            targetChunkSize = Math.floor(random() * 6) + 1;
+            continue;
         }
         
-        steps.push({ char, delayMs: i === 0 ? 0 : delay });
+        currentChunk += char;
+        
+        // Submit when last char or when chunk reaches random target size
+        if (isLastChar || currentChunk.length >= targetChunkSize) {
+            // Random delay with occasional longer "thinking" pause
+            let delay: number;
+            if (random() < config.typing.pauseChance) {
+                delay = Math.round(
+                    config.typing.pauseMinMs + random() * (config.typing.pauseMaxMs - config.typing.pauseMinMs)
+                );
+            } else {
+                delay = Math.round(
+                    config.typing.keyDelayMinMs + random() * (config.typing.keyDelayMaxMs - config.typing.keyDelayMinMs)
+                );
+            }
+            
+            steps.push({ 
+                chunk: currentChunk, 
+                delayMs: steps.length === 0 ? 0 : delay 
+            });
+            
+            currentChunk = '';
+            targetChunkSize = Math.floor(random() * 6) + 1;
+        }
     }
 
     return steps;
